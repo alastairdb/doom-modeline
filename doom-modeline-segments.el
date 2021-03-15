@@ -541,9 +541,11 @@ buffer where knowing the current project directory is important."
    (concat
     (doom-modeline-spc)
     (propertize (format-mode-line
-                 (or (and (boundp 'delighted-modes)
-                          (cadr (assq major-mode delighted-modes)))
-                     mode-name))
+                 (concat "%["
+                         (or (and (boundp 'delighted-modes)
+                                  (cadr (assq major-mode delighted-modes)))
+                             mode-name)
+                         "%]"))
                 'help-echo "Major mode\n\
   mouse-1: Display major mode menu\n\
   mouse-2: Show help for major mode\n\
