@@ -233,6 +233,11 @@ It respects `all-the-icons-color-icons'."
   :type 'boolean
   :group'doom-modeline)
 
+(defcustom doom-modeline-major-mode-show-edit-depth nil
+  "Whether to indicate the depth of recursive edits by brackets around the major mode."
+  :type 'boolean
+  :group'doom-modeline)
+
 (defcustom doom-modeline-buffer-state-icon t
   "Whether display the icon for the buffer state.
 
