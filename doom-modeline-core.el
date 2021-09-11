@@ -34,9 +34,9 @@
 (require 'all-the-icons)
 (require 'shrink-path)
 
-
+
 ;;
-;; Compatibilities
+;; Compatibility
 ;;
 
 (eval-and-compile
@@ -124,10 +124,17 @@ It returns a file name which can be used directly as argument of
           ?\xf243                      ; battery-quarter
           ?\xf241                      ; battery-three-quarters
           ))))
-(when (display-graphic-p)
+
+(defun doom-modeline-set-char-widths (&rest _)
+  "Set char widths for the unicode icons."
   (doom-modeline--set-char-widths doom-modeline-rhs-icons-alist))
 
+(if (and (daemonp)
+         (not (frame-parameter nil 'client)))
+    (add-hook 'after-make-frame-functions #'doom-modeline-set-char-widths)
+  (and (display-graphic-p) (doom-modeline-set-char-widths)))
 
+
 ;;
 ;; Customization
 ;;
@@ -145,11 +152,24 @@ If the actual char height is larger, it respects the actual char height."
          (set sym (if (> val 0) val 1)))
   :group 'doom-modeline)
 
-(defcustom doom-modeline-bar-width (if (eq system-type 'darwin) 3 6)
+(defcustom doom-modeline-bar-width 4
   "How wide the mode-line bar should be. It's only respected in GUI."
   :type 'integer
   :set (lambda (sym val)
          (set sym (if (> val 0) val 1)))
+  :group 'doom-modeline)
+
+(defcustom doom-modeline-hud nil
+  "Whether to use hud instead of default bar. It's only respected in GUI."
+  :type 'boolean
+  :group 'doom-modeline)
+
+(defcustom doom-modeline-hud-min-height 2
+  "Minimum height in pixels of the \"thumb\" of the hud.
+Only respected in GUI."
+  :type 'integer
+  :set (lambda (sym val)
+         (set sym (if (> val 1) val 1)))
   :group 'doom-modeline)
 
 (defcustom doom-modeline-window-width-limit fill-column
@@ -161,21 +181,17 @@ displayed."
                  (const :tag "Disable" nil))
   :group 'doom-modeline)
 
-(defcustom doom-modeline-project-detection
-  (cond ((fboundp 'ffip-get-project-root-directory) 'ffip)
-        ((fboundp 'projectile-project-root) 'projectile)
-        ((fboundp 'project-current) 'project)
-        (t nil))
+(defcustom doom-modeline-project-detection 'auto
   "How to detect the project root.
 
-The default priority is `ffip' > `projectile' > `project'.
 nil means to use `default-directory'.
 
 The project management packages have some issues on detecting project root.
 e.g. `projectile' doesn't handle symlink folders well, while `project' is
 unable to hanle sub-projects.
 Specify another one if you encounter the issue."
-  :type '(choice (const :tag "Find File in Project" ffip)
+  :type '(choice (const :tag "Auto-detect" auto)
+                 (const :tag "Find File in Project" ffip)
                  (const :tag "Projectile" projectile)
                  (const :tag "Built-in Project" project)
                  (const :tag "Disable" nil))
@@ -212,7 +228,7 @@ Given ~/Projects/FOSS/emacs/lisp/comint.el
                  (const buffer-name))
   :group'doom-modeline)
 
-(defcustom doom-modeline-icon (display-graphic-p)
+(defcustom doom-modeline-icon t
   "Whether display the icons in the mode-line.
 
 While using the server mode in GUI, should set the value explicitly."
@@ -530,7 +546,7 @@ It requires `circe' or `erc' package."
   :type 'function
   :group 'doom-modeline)
 
-
+
 ;;
 ;; Faces
 ;;
@@ -771,11 +787,11 @@ etc. (also see the face `doom-modeline-unread-number')."
   :group 'doom-modeline-faces)
 
 (defface doom-modeline-buffer-timemachine
-  '((t (:inherit (doom-modeline-buffer-file italic underline))))
+  '((t (:inherit doom-modeline-buffer-file :slant italic)))
   "Face for timemachine status."
   :group 'doom-modeline-faces)
 
-
+
 ;;
 ;; Externals
 ;;
@@ -785,7 +801,7 @@ etc. (also see the face `doom-modeline-unread-number')."
 (declare-function project-roots 'project)
 (declare-function projectile-project-root 'projectile)
 
-
+
 ;;
 ;; Core helpers
 ;;
@@ -892,7 +908,7 @@ then this function does nothing."
       (add-hook 'focus-in-hook #'doom-modeline-focus)
       (add-hook 'focus-out-hook #'doom-modeline-unfocus))))
 
-
+
 ;;
 ;; Core
 ;;
@@ -938,11 +954,13 @@ then this function does nothing."
 (defvar doom-modeline--font-width-cache nil)
 (defun doom-modeline--font-width ()
   "Cache the font width."
-  (let ((attributes (face-all-attributes 'mode-line)))
-    (or (cdr (assoc attributes doom-modeline--font-width-cache))
-        (let ((width (window-font-width nil 'mode-line)))
-          (push (cons attributes width) doom-modeline--font-width-cache)
-          width))))
+  (if (display-graphic-p)
+      (let ((attributes (face-all-attributes 'mode-line)))
+        (or (cdr (assoc attributes doom-modeline--font-width-cache))
+            (let ((width (window-font-width nil 'mode-line)))
+              (push (cons attributes width) doom-modeline--font-width-cache)
+              width)))
+    1))
 
 ;; Refresh the font width after setting frame parameters
 ;; to ensure the font width is correct.
@@ -1037,6 +1055,17 @@ If DEFAULT is non-nil, set the default mode-line for all buffers."
               ((floatp height) (* height (frame-char-height)))
               (t (frame-char-height)))))))
 
+(defun doom-modeline--original-value (sym)
+  "Return the original value for SYM, if any.
+
+If SYM has an original value, return it in a list. Return nil
+otherwise."
+  (let* ((orig-val-expr (get sym 'standard-value)))
+    (when (consp orig-val-expr)
+      (ignore-errors
+        (list
+         (eval (car orig-val-expr)))))))
+
 (defun doom-modeline-add-variable-watcher (symbol watch-function)
   "Cause WATCH-FUNCTION to be called when SYMBOL is set if possible.
 
@@ -1051,7 +1080,7 @@ The face should be the first attribute, or the font family may be overridden.
 So convert the face \":family XXX :height XXX :inherit XXX\" to
 \":inherit XXX :family XXX :height XXX\".
 See https://github.com/seagle0128/doom-modeline/issues/301."
-  (if doom-modeline-icon
+  (if (and doom-modeline-icon (display-graphic-p))
       (when-let ((props (get-text-property 0 'face icon)))
         (cl-destructuring-bind (&key family height inherit &allow-other-keys) props
           (propertize icon 'face `(:inherit ,(or face inherit props)
@@ -1062,26 +1091,18 @@ See https://github.com/seagle0128/doom-modeline/issues/301."
 (defun doom-modeline-icon (icon-set icon-name unicode text &rest args)
   "Display icon of ICON-NAME with ARGS in mode-line.
 
-ICON-SET includes `octicon', `faicon', `material', `alltheicons' and `fileicon'.
+ICON-SET includes `octicon', `faicon', `material', `alltheicons' and `fileicon', etc.
 UNICODE is the unicode char fallback. TEXT is the ASCII char fallback.
 ARGS is same as `all-the-icons-octicon' and others."
   (let ((face (or (plist-get args :face) 'mode-line)))
     (or
      ;; Icons
-     (when (and doom-modeline-icon
+     (when (and (display-graphic-p)
+                doom-modeline-icon
                 icon-name
                 (not (string-empty-p icon-name)))
-       (let ((icon (pcase icon-set
-                     ('octicon
-                      (apply #'all-the-icons-octicon icon-name args))
-                     ('faicon
-                      (apply #'all-the-icons-faicon icon-name args))
-                     ('material
-                      (apply #'all-the-icons-material icon-name args))
-                     ('alltheicon
-                      (apply #'all-the-icons-alltheicon icon-name args))
-                     ('fileicon
-                      (apply #'all-the-icons-fileicon icon-name args)))))
+       (when-let* ((func (all-the-icons--function-name icon-set))
+                   (icon (and (fboundp func) (apply func icon-name args))))
          (doom-modeline-propertize-icon icon face)))
      ;; Unicode fallback
      (and doom-modeline-unicode-fallback
@@ -1090,10 +1111,13 @@ ARGS is same as `all-the-icons-octicon' and others."
           (char-displayable-p (string-to-char unicode))
           (propertize unicode 'face face))
      ;; ASCII text
-     (and text (propertize text 'face face)))))
+     (and text (propertize text 'face face))
+     "")))
 
-(defun doom-modeline--make-image (face width height)
-  "Create a PBM bitmap via FACE, WIDTH and HEIGHT."
+(defun doom-modeline--create-bar-image (face width height)
+  "Create the bar image.
+Use FACE1 for the bar, FACE2 for the background.
+WIDTH and HEIGHT are the image size in pixels."
   (when (and (display-graphic-p)
              (image-type-available-p 'pbm))
     (propertize
@@ -1105,6 +1129,33 @@ ARGS is same as `all-the-icons-octicon' and others."
                   (make-string (* width height) ?1)
                   "\n")
           'pbm t :foreground color :ascent 'center))))))
+
+(defun doom-modeline--create-hud-image
+    (face1 face2 width height top-margin bottom-margin)
+  "Create the hud image.
+Use FACE1 for the bar, FACE2 for the background.
+WIDTH and HEIGHT are the image size in pixels.
+TOP-MARGIN and BOTTOM-MARGIN are the size of the margin above and below the bar,
+respectively."
+  (when (and (display-graphic-p)
+             (image-type-available-p 'pbm))
+    (let ((min-height (min height doom-modeline-hud-min-height)))
+      (unless (> (- height top-margin bottom-margin) min-height)
+        (let ((margin (- height min-height)))
+          (setq top-margin (/ (* margin top-margin) (+ top-margin bottom-margin))
+                bottom-margin (- margin top-margin)))))
+    (propertize
+     " " 'display
+     (let ((color1 (or (face-background face1 nil t) "None"))
+           (color2 (or (face-background face2 nil t) "None")))
+       (create-image
+        (concat
+         (format "P1\n%i %i\n" width height)
+         (make-string (* top-margin width) ?0)
+         (make-string (* (- height top-margin bottom-margin) width) ?1)
+         (make-string (* bottom-margin width) ?0)
+         "\n")
+        'pbm t :foreground color1 :background color2 :ascent 'center)))))
 
 ;; Check whether `window-total-width' is smaller than the limit
 (defvar-local doom-modeline--limited-width-p nil)
@@ -1123,27 +1174,27 @@ ARGS is same as `all-the-icons-octicon' and others."
 (add-hook 'window-size-change-functions #'doom-modeline-window-size-change-function)
 (add-hook 'buffer-list-update-hook #'doom-modeline-window-size-change-function)
 
-(defvar-local doom-modeline--project-detected-p nil)
 (defvar-local doom-modeline--project-root nil)
 (defun doom-modeline--project-root ()
   "Get the path to the root of your project.
 Return nil if no project was found."
-  (unless doom-modeline--project-detected-p
-    (setq doom-modeline--project-root
-          (pcase doom-modeline-project-detection
-            ('ffip
-             (when (fboundp 'ffip-get-project-root-directory)
+  (or doom-modeline--project-root
+      (setq doom-modeline--project-root
+            (pcase (if (eq doom-modeline-project-detection 'auto)
+                       (cond
+                        ((fboundp 'ffip-get-project-root-directory)  'ffip)
+                        ((fboundp 'projectile-project-root) 'projectile)
+                        ((fboundp 'project-current)  'project)
+                        (t 'default))
+                     doom-modeline-project-detection)
+              ('ffip
                (let ((inhibit-message t))
-                 (ffip-get-project-root-directory))))
-            ('projectile
-             (when (fboundp 'projectile-project-root)
-               (projectile-project-root)))
-            ('project
-             (when (fboundp 'project-current)
+                 (ffip-get-project-root-directory)))
+              ('projectile
+               (projectile-project-root))
+              ('project
                (when-let ((project (project-current)))
-                 (car (project-roots project))))))
-          doom-modeline--project-detected-p t))
-  doom-modeline--project-root)
+                 (expand-file-name (cdr project))))))))
 
 (defun doom-modeline-project-p ()
   "Check if the file is in a project."

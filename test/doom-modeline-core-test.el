@@ -37,10 +37,11 @@
 (ert-deftest doom-modeline-icon/octicon-icon ()
   (let ((doom-modeline-icon t)
         (doom-modeline-unicode-fallback t))
+    ;; In TUI, fallback to unicode.
     (should
      (string= (substring-no-properties
                (doom-modeline-icon 'octicon "octoface" "☻" ":)" 'error))
-              ""))))
+              "☻"))))
 
 (ert-deftest doom-modeline-icon/octicon-unicode ()
   (let ((doom-modeline-icon nil)
@@ -58,36 +59,40 @@
                (doom-modeline-icon 'octicon "octoface" "☻" ":)" 'error))
               ":)"))))
 
-(ert-deftest doom-modeline-project-root/ffip ()
+(ert-deftest doom-modeline-project-root/auto ()
   (let ((default-directory "/home/user/project/")
-        (doom-modeline-project-detection 'ffip)
-        (doom-modeline--project-detected-p t)
+        (doom-modeline-project-detection 'auto)
         (doom-modeline--project-root nil))
-    (cl-flet ((ffip-get-project-root-directory () "/home/user/project-ffip/"))
-      (should (string= (ffip-get-project-root-directory) "/home/user/project-ffip/")))))
+    (cl-flet ((project-current (&optional _maybe-prompt _dir)
+                               `(vc . ,default-directory)))
+      (should (string= (doom-modeline-project-root) default-directory)))))
+
+(ert-deftest doom-modeline-project-root/ffip ()
+  (let ((default-directory "/home/user/project-ffip/")
+        (doom-modeline-project-detection 'ffip)
+        (doom-modeline--project-root nil))
+    (cl-flet ((ffip-get-project-root-directory () default-directory))
+      (should (string= (doom-modeline-project-root) default-directory)))))
 
 (ert-deftest doom-modeline-project-root/projectile ()
   (let ((default-directory "/home/user/projectile/")
         (doom-modeline-project-detection 'projectile)
-        (doom-modeline--project-detected-p t)
         (doom-modeline--project-root nil))
     (cl-flet ((projectile-project-root () default-directory))
-      (should (string= (doom-modeline-project-root) "/home/user/projectile/")))))
+      (should (string= (doom-modeline-project-root) default-directory)))))
 
 (ert-deftest doom-modeline-project-root/project ()
   (let ((default-directory "/home/user/project-current/")
         (doom-modeline-project-detection 'project)
-        (doom-modeline--project-detected-p t)
         (doom-modeline--project-root nil))
     (cl-flet ((project-current (&optional _maybe-prompt _dir)
                                `(vc . ,default-directory)))
-      (should (string= (doom-modeline-project-root) "/home/user/project-current/")))))
+      (should (string= (doom-modeline-project-root) default-directory)))))
 
 (ert-deftest doom-modeline-project-root/default ()
   (let ((default-directory "/home/user/project/")
-        (doom-modeline-project-detection nil)
-        (doom-modeline--project-detected-p t))
-    (should (string= (doom-modeline-project-root) "/home/user/project/"))))
+        (doom-modeline-project-detection nil))
+    (should (string= (doom-modeline-project-root) default-directory))))
 
 (ert-deftest doom-modeline-buffer-file-name/invalid ()
   :expected-result :failed
@@ -126,7 +131,7 @@
               (doom-modeline-project-root () default-directory))
       (should
        (string= (substring-no-properties (doom-modeline-buffer-file-name))
-                "%b")))))
+                "project/relative/test.txt")))))
 
 (ert-deftest doom-modeline-buffer-file-name/file-name ()
   (let ((default-directory "/home/user/project/")

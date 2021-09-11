@@ -4,7 +4,7 @@
 
 ;; Author: Vincent Zhang <seagle0128@gmail.com>
 ;; Homepage: https://github.com/seagle0128/doom-modeline
-;; Version: 3.1.0
+;; Version: 3.2.1
 ;; Package-Requires: ((emacs "25.1") (all-the-icons "2.2.0") (shrink-path "0.2.0") (dash "2.11.0"))
 ;; Keywords: faces mode-line
 
@@ -84,7 +84,7 @@
 (require 'doom-modeline-core)
 (require 'doom-modeline-segments)
 
-
+
 ;;
 ;; Mode lines
 ;;
@@ -145,7 +145,7 @@
   '(bar window-number matches git-timemachine buffer-position word-count parrot selection-info)
   '(misc-info minor-modes indent-info buffer-encoding major-mode))
 
-
+
 ;;
 ;; Interfaces
 ;;
@@ -227,15 +227,10 @@ If DEFAULT is non-nil, set the default mode-line for all buffers."
   "Set timemachine mode-line."
   (doom-modeline-set-modeline 'timemachine))
 
-
+
 ;;
 ;; Minor mode
 ;;
-
-(defvar doom-modeline--default-format mode-line-format
-  "Storage for the default `mode-line-format'.
-
-So it can be restored when `doom-modeline-mode' is disabled.")
 
 (defvar doom-modeline-mode-map (make-sparse-keymap))
 
@@ -253,14 +248,12 @@ So it can be restored when `doom-modeline-mode' is disabled.")
   (if doom-modeline-mode
       (progn
         (doom-modeline-refresh-bars)        ; Create bars
-        (doom-modeline-set-main-modeline)   ; Set mode-line for current buffer
         (doom-modeline-set-main-modeline t) ; Set default mode-line
 
-        ;; These buffers are already created and don't get modelines
-        (dolist (bname '("*scratch*" "*Messages*"))
-          (if (buffer-live-p (get-buffer bname))
-              (with-current-buffer bname
-                (doom-modeline-set-main-modeline))))
+        ;; Apply to all existing buffers.
+        (dolist (buf (buffer-list))
+          (with-current-buffer buf
+            (doom-modeline-set-main-modeline)))
 
         ;; For two-column editing
         (setq 2C-mode-line-format (doom-modeline 'special))
@@ -286,17 +279,14 @@ So it can be restored when `doom-modeline-mode' is disabled.")
         (advice-add #'helm-display-mode-line :after #'doom-modeline-set-helm-modeline))
     (progn
       ;; Restore mode-line
-      (setq mode-line-format doom-modeline--default-format)
-      (setq-default mode-line-format doom-modeline--default-format)
-      (dolist (bname '("*scratch*" "*Messages*"))
-        (if (buffer-live-p (get-buffer bname))
-            (with-current-buffer bname
-              (setq mode-line-format doom-modeline--default-format))))
+      (let ((original-format (doom-modeline--original-value 'mode-line-format)))
+        (setq-default mode-line-format original-format)
+        (dolist (buf (buffer-list))
+          (with-current-buffer buf
+            (setq mode-line-format original-format))))
 
       ;; For two-column editing
-      (setq 2C-mode-line-format
-            '("-%*- %15b --"  (-3 . "%p")  "--%[("  mode-name
-	          minor-mode-alist  "%n"  mode-line-process  ")%]%-"))
+      (setq 2C-mode-line-format (doom-modeline--original-value '2C-mode-line-format))
 
       ;; Remove hooks
       (remove-hook 'Info-mode-hook #'doom-modeline-set-info-modeline)

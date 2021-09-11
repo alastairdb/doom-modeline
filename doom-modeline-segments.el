@@ -36,7 +36,7 @@
 (require 'doom-modeline-core)
 (require 'doom-modeline-env)
 
-
+
 ;;
 ;; Externals
 ;;
@@ -81,8 +81,11 @@
 (defvar grip--process)
 (defvar helm--mode-line-display-prefarg)
 (defvar iedit-occurrences-overlays)
+(defvar meow--indicator)
 (defvar minions-direct)
 (defvar minions-mode-line-minor-modes-map)
+(defvar mlscroll-minimum-current-width)
+(defvar mlscroll-right-align)
 (defvar mu4e-alert-mode-line)
 (defvar mu4e-alert-modeline-formatter)
 (defvar nyan-minimum-window-width)
@@ -95,13 +98,13 @@
 (defvar phi-search-mode-line-format)
 (defvar poke-line-minimum-window-width)
 (defvar rcirc-activity)
+(defvar sml-modeline-len)
 (defvar symbol-overlay-keywords-alist)
 (defvar symbol-overlay-temp-symbol)
 (defvar text-scale-mode-amount)
 (defvar tracking-buffers)
 (defvar winum-auto-setup-mode-line)
 (defvar xah-fly-insert-state-q)
-(defvar meow--indicator)
 
 (declare-function anzu--reset-status 'anzu)
 (declare-function anzu--where-is-here 'anzu)
@@ -120,6 +123,7 @@
 (declare-function cider-current-repl 'cider)
 (declare-function cider-jack-in 'cider)
 (declare-function cider-quit 'cider)
+(declare-function citre-mode 'citre)
 (declare-function dap--cur-session 'dap-mode)
 (declare-function dap--debug-session-name 'dap-mode)
 (declare-function dap--debug-session-state 'dap-mode)
@@ -193,6 +197,7 @@
 (declare-function lsp-workspaces 'lsp-mode)
 (declare-function lv-message 'lv)
 (declare-function mc/num-cursors 'multiple-cursors-core)
+(declare-function mlscroll-mode-line 'mlscroll)
 (declare-function mu4e-alert-default-mode-line-formatter 'mu4e-alert)
 (declare-function mu4e-alert-enable-mode-line-display 'mu4e-alert)
 (declare-function nyan-create 'nyan-mode)
@@ -212,6 +217,7 @@
 (declare-function rcirc-window-configuration-change 'rcirc)
 (declare-function rime--should-enable-p 'rime)
 (declare-function rime--should-inline-ascii-p 'rime)
+(declare-function sml-modeline-create 'sml-modeline)
 (declare-function symbol-overlay-assoc 'symbol-overlay)
 (declare-function symbol-overlay-get-list 'symbol-overlay)
 (declare-function symbol-overlay-get-symbol 'symbol-overlay)
@@ -231,6 +237,7 @@
 (declare-function winum--install-mode-line 'winum)
 (declare-function winum-get-number-string 'winum)
 
+
 
 ;;
 ;; Buffer information
@@ -240,7 +247,9 @@
 (defun doom-modeline-update-buffer-file-icon (&rest _)
   "Update file icon in mode-line."
   (setq doom-modeline--buffer-file-icon
-        (when (and doom-modeline-icon doom-modeline-major-mode-icon)
+        (when (and (display-graphic-p)
+                   doom-modeline-icon
+                   doom-modeline-major-mode-icon)
           (let ((icon (all-the-icons-icon-for-buffer)))
             (propertize (if (or (null icon) (symbolp icon))
                             (doom-modeline-icon 'faicon "file-o" nil nil
@@ -427,12 +436,12 @@ like the scratch buffer where knowing the current project directory is important
                     ((doom-modeline--active) 'doom-modeline-buffer-path)
                     (t 'mode-line-inactive))))
     (concat (doom-modeline-spc)
-            (doom-modeline--buffer-state-icon)
             (and doom-modeline-major-mode-icon
                  (concat (doom-modeline-icon
                           'octicon "file-directory" "🖿" ""
                           :face face :v-adjust -0.05 :height 1.25)
                          (doom-modeline-vspc)))
+            (doom-modeline--buffer-state-icon)
             (propertize (abbreviate-file-name default-directory) 'face face))))
 
 (doom-modeline-def-segment buffer-default-directory-simple
@@ -645,7 +654,7 @@ Uses `all-the-icons-octicon' to fetch the icon."
   (setq doom-modeline--vcs-icon
         (when (and vc-mode buffer-file-name)
           (let* ((backend (vc-backend buffer-file-name))
-                 (state   (vc-state buffer-file-name backend)))
+                 (state   (vc-state (file-local-name buffer-file-name) backend)))
             (cond ((memq state '(edited added))
                    (doom-modeline-vcs-icon "git-compare" "⇆" "*" 'doom-modeline-info -0.05))
                   ((eq state 'needs-merge)
@@ -684,7 +693,7 @@ Uses `all-the-icons-octicon' to fetch the icon."
   (setq doom-modeline--vcs-text
         (when (and vc-mode buffer-file-name)
           (let* ((backend (vc-backend buffer-file-name))
-                 (state (vc-state buffer-file-name backend))
+                 (state (vc-state (file-local-name buffer-file-name) backend))
                  (str (if vc-display-status
                           (substring vc-mode (+ (if (eq backend 'Hg) 2 3) 2))
                         "")))
@@ -1359,37 +1368,97 @@ of active `multiple-cursors'."
 
 (defvar doom-modeline--bar-active nil)
 (defvar doom-modeline--bar-inactive nil)
-(doom-modeline-def-segment bar
-  "The bar regulates the height of the mode-line in GUI."
+
+(defsubst doom-modeline--bar ()
+  "The default bar regulates the height of the mode-line in GUI."
+  (unless (and doom-modeline--bar-active doom-modeline--bar-inactive)
+    (let ((width doom-modeline-bar-width)
+          (height (max doom-modeline-height
+                       (doom-modeline--font-height))))
+      (when (and (numberp width) (numberp height))
+        (setq doom-modeline--bar-active
+              (doom-modeline--create-bar-image 'doom-modeline-bar width height)
+              doom-modeline--bar-inactive
+              (doom-modeline--create-bar-image
+               'doom-modeline-bar-inactive width height)))))
   (if (doom-modeline--active)
       doom-modeline--bar-active
     doom-modeline--bar-inactive))
 
-(defun doom-modeline-refresh-bars (&optional width height)
-  "Refresh mode-line bars with `WIDTH' and `HEIGHT'."
-  (let ((width (or width doom-modeline-bar-width))
-        (height (max (or height doom-modeline-height)
-                     (doom-modeline--font-height))))
-    (when (and (numberp width) (numberp height))
-      (setq doom-modeline--bar-active
-            (doom-modeline--make-image 'doom-modeline-bar width height)
-            doom-modeline--bar-inactive
-            (doom-modeline--make-image 'doom-modeline-bar-inactive width height)))))
+(defun doom-modeline-refresh-bars ()
+  "Refresh mode-line bars on next redraw."
+  (setq doom-modeline--bar-active nil
+        doom-modeline--bar-inactive nil))
+
+(cl-defstruct doom-modeline--hud-cache active inactive top-margin bottom-margin)
+
+(defsubst doom-modeline--hud ()
+  "Powerline's hud segment reimplemented in the style of Doom's bar segment."
+  (let* ((ws (window-start))
+         (we (window-end))
+         (bs (buffer-size))
+         (height (max doom-modeline-height
+                      (doom-modeline--font-height)))
+         (top-margin (if (zerop bs)
+                         0
+                       (/ (* height (1- ws)) bs)))
+         (bottom-margin (if (zerop bs)
+                            0
+                          (max 0 (/ (* height (- bs we 1)) bs))))
+         (cache (or (window-parameter nil 'doom-modeline--hud-cache)
+                    (set-window-parameter nil 'doom-modeline--hud-cache
+                                          (make-doom-modeline--hud-cache)))))
+    (unless (and (doom-modeline--hud-cache-active cache)
+                 (doom-modeline--hud-cache-inactive cache)
+                 (= top-margin (doom-modeline--hud-cache-top-margin cache))
+                 (= bottom-margin
+                    (doom-modeline--hud-cache-bottom-margin cache)))
+      (setf (doom-modeline--hud-cache-active cache)
+            (doom-modeline--create-hud-image
+             'doom-modeline-bar 'default doom-modeline-bar-width
+             height top-margin bottom-margin)
+            (doom-modeline--hud-cache-inactive cache)
+            (doom-modeline--create-hud-image
+             'doom-modeline-bar-inactive 'default doom-modeline-bar-width
+             height top-margin bottom-margin)
+            (doom-modeline--hud-cache-top-margin cache) top-margin
+            (doom-modeline--hud-cache-bottom-margin cache) bottom-margin))
+    (if (doom-modeline--active)
+        (doom-modeline--hud-cache-active cache)
+      (doom-modeline--hud-cache-inactive cache))))
+
+(defun doom-modeline-invalidate-huds ()
+  "Invalidate all cached hud images."
+  (dolist (frame (frame-list))
+    (dolist (window (window-list frame))
+      (set-window-parameter window 'doom-modeline--hud-cache nil))))
 
 (doom-modeline-add-variable-watcher
  'doom-modeline-height
  (lambda (_sym val op _where)
    (when (and (eq op 'set) (integerp val))
-     (doom-modeline-refresh-bars doom-modeline-bar-width val))))
+     (doom-modeline-refresh-bars)
+     (doom-modeline-invalidate-huds))))
 
 (doom-modeline-add-variable-watcher
  'doom-modeline-bar-width
  (lambda (_sym val op _where)
    (when (and (eq op 'set) (integerp val))
-     (doom-modeline-refresh-bars val doom-modeline-height))))
+     (doom-modeline-refresh-bars)
+     (doom-modeline-invalidate-huds))))
 
 (add-hook 'after-setting-font-hook #'doom-modeline-refresh-bars)
-(add-hook 'window-configuration-change-hook #'doom-modeline-refresh-bars)
+(add-hook 'after-setting-font-hook #'doom-modeline-invalidate-huds)
+
+(doom-modeline-def-segment bar
+  "The bar regulates the height of the mode-line in GUI."
+  (if doom-modeline-hud
+      (doom-modeline--hud)
+    (doom-modeline--bar)))
+
+(doom-modeline-def-segment hud
+  "Powerline's hud segment reimplemented in the style of Doom's bar segment."
+  (doom-modeline--hud))
 
 
 ;;
@@ -1425,6 +1494,7 @@ one. The ignored buffers are excluded unless `aw-ignore-on' is nil."
 (advice-add #'winum--clear-mode-line :override #'ignore)
 
 (doom-modeline-def-segment window-number
+  "The current window number."
   (let ((num (cond
               ((bound-and-true-p ace-window-display-mode)
                (aw-update)
@@ -1436,14 +1506,13 @@ one. The ignored buffers are excluded unless `aw-ignore-on' is nil."
                (window-numbering-get-number-string))
               (t ""))))
     (if (and (< 0 (length num))
-             (< (if (active-minibuffer-window) 2 1) ; exclude minibuffer
-                (length (cl-mapcan
-                         (lambda (frame)
-                           ;; Exclude child frames
-                           (unless (and (fboundp 'frame-parent)
-                                        (frame-parent frame))
-                             (window-list)))
-                         (visible-frame-list)))))
+             (< 1 (length (cl-mapcan
+                           (lambda (frame)
+                             ;; Exclude minibuffer and child frames
+                             (unless (and (fboundp 'frame-parent)
+                                          (frame-parent frame))
+                               (window-list frame 'never)))
+                           (visible-frame-list)))))
         (propertize (format " %s " num)
                     'face (if (doom-modeline--active)
                               'doom-modeline-buffer-major-mode
@@ -1456,7 +1525,7 @@ one. The ignored buffers are excluded unless `aw-ignore-on' is nil."
 
 (doom-modeline-def-segment workspace-name
   "The current workspace name or number.
-Requires `eyebrowse-mode' or `tab-bar-mode' to be enabled."
+Requires `eyebrowse-mode' to be enabled or `tab-bar-mode' tabs to be created."
   (when doom-modeline-workspace-name
     (when-let
         ((name (cond
@@ -1467,7 +1536,8 @@ Requires `eyebrowse-mode' or `tab-bar-mode' to be enabled."
                      ((num (eyebrowse--get 'current-slot))
                       (tag (nth 2 (assoc num (eyebrowse--get 'window-configs)))))
                    (if (< 0 (length tag)) tag (int-to-string num))))
-                ((bound-and-true-p tab-bar-mode)
+                ((and (fboundp 'tab-bar-mode)
+                      (< 1 (length (frame-parameter nil 'tabs))))
                  (let* ((current-tab (tab-bar--current-tab))
                         (tab-index (tab-bar--current-tab-index))
                         (explicit-name (alist-get 'explicit-name current-tab))
@@ -1601,6 +1671,7 @@ mouse-1: Display Line and Column Mode Menu"
 
      (cond ((and active
                  (bound-and-true-p nyan-mode)
+                 (not doom-modeline--limited-width-p)
                  (>= (window-width) nyan-minimum-window-width))
             (concat
              (doom-modeline-spc)
@@ -1608,11 +1679,29 @@ mouse-1: Display Line and Column Mode Menu"
              (propertize (nyan-create) 'mouse-face mouse-face)))
            ((and active
                  (bound-and-true-p poke-line-mode)
+                 (not doom-modeline--limited-width-p)
                  (>= (window-width) poke-line-minimum-window-width))
             (concat
              (doom-modeline-spc)
              (doom-modeline-spc)
              (propertize (poke-line-create) 'mouse-face mouse-face)))
+           ((and active
+                 (bound-and-true-p mlscroll-mode)
+                 (not doom-modeline--limited-width-p)
+                 (>= (window-width) mlscroll-minimum-current-width))
+            (concat
+             (doom-modeline-spc)
+             (doom-modeline-spc)
+             (let ((mlscroll-right-align nil))
+               (format-mode-line (mlscroll-mode-line)))))
+           ((and active
+                 (bound-and-true-p sml-modeline-mode)
+                 (not doom-modeline--limited-width-p)
+                 (>= (window-width) sml-modeline-len))
+            (concat
+             (doom-modeline-spc)
+             (doom-modeline-spc)
+             (propertize (sml-modeline-create) 'mouse-face mouse-face)))
            (t
             (when doom-modeline-percent-position
               (concat
@@ -1989,6 +2078,14 @@ mouse-1: Start server"))
                                    map)))))
 (add-hook 'eglot--managed-mode-hook #'doom-modeline-update-eglot)
 
+(defvar-local doom-modeline--tags
+  (propertize
+   (doom-modeline-lsp-icon "LSP" 'doom-modeline-lsp-success)
+   'help-echo "TAGS: Citre mode
+mouse-1: Toggle citre mode"
+   'mouse-face 'mode-line-highlight
+   'local-map (make-mode-line-mouse-map 'mouse-1 #'citre-mode)))
+
 (doom-modeline-def-segment lsp
   "The LSP server state."
   (when (and doom-modeline-lsp
@@ -1997,7 +2094,9 @@ mouse-1: Start server"))
           (icon (cond ((bound-and-true-p lsp-mode)
                        doom-modeline--lsp)
                       ((bound-and-true-p eglot--managed-mode)
-                       doom-modeline--eglot))))
+                       doom-modeline--eglot)
+                      ((bound-and-true-p citre-mode)
+                       doom-modeline--tags))))
       (when icon
         (concat
          (doom-modeline-spc)
@@ -2770,14 +2869,7 @@ The cdr can also be a function that returns a name to use.")
     (concat
      (doom-modeline-spc)
      (doom-modeline--buffer-mode-icon)
-     ;; Snapshot icon
-     (doom-modeline-icon 'material "camera_alt" "📷" "%1*"
-                         :face (if active
-                                   '(:inherit doom-modeline-warning :weight normal)
-                                 'mode-line-inactive)
-                         :height 1.1 :v-adjust -0.25)
-     (and doom-modeline-icon (doom-modeline-vspc))
-     ;; Buffer name
+     (doom-modeline--buffer-state-icon)
      (propertize "*%b*" 'face (if active
                                   'doom-modeline-buffer-timemachine
                                 'mode-line-inactive)))))

@@ -1,9 +1,10 @@
 # doom-modeline
 
 [![Build Status](https://github.com/seagle0128/doom-modeline/workflows/CI/badge.svg?branch=master)](https://github.com/seagle0128/doom-modeline/actions)
+[![Release Tag](https://img.shields.io/github/tag/seagle0128/doom-modeline.svg?label=Release)](https://github.com/seagle0128/doom-modeline/release)
+[![License](http://img.shields.io/:License-GPL3-blue.svg)](License)
 [![MELPA](https://melpa.org/packages/doom-modeline-badge.svg)](https://melpa.org/#/doom-modeline)
 [![MELPA Stable](https://stable.melpa.org/packages/doom-modeline-badge.svg)](https://stable.melpa.org/#/doom-modeline)
-[![License](http://img.shields.io/:license-gpl3-blue.svg)](LICENSE)
 
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
 **Table of Contents**
@@ -140,9 +141,10 @@ In `init.el`,
 ``` emacs-lisp
 (require 'doom-modeline)
 (doom-modeline-mode 1)
+```
+or
 
-;; Or use this
-;; Use `window-setup-hook' if the right segment is displayed incorrectly
+``` elisp
 (add-hook 'after-init-hook #'doom-modeline-mode)
 ```
 
@@ -152,9 +154,10 @@ In `init.el`,
 (use-package doom-modeline
   :ensure t
   :init (doom-modeline-mode 1))
+```
+or
 
-;; Or use this
-;; Use `window-setup-hook' if the right segment is displayed incorrectly
+``` elisp
 (use-package doom-modeline
   :ensure t
   :hook (after-init . doom-modeline-mode))
@@ -177,20 +180,22 @@ Run `M-x customize-group RET doom-modeline RET` or set the variables.
 (setq doom-modeline-height 25)
 
 ;; How wide the mode-line bar should be. It's only respected in GUI.
-(setq doom-modeline-bar-width 3)
+(setq doom-modeline-bar-width 4)
+
+;; Whether to use hud instead of default bar. It's only respected in GUI.
+(defcustom doom-modeline-hud nil)
 
 ;; The limit of the window width.
 ;; If `window-width' is smaller than the limit, some information won't be displayed.
 (setq doom-modeline-window-width-limit fill-column)
 
 ;; How to detect the project root.
-;; The default priority of detection is `ffip' > `projectile' > `project'.
 ;; nil means to use `default-directory'.
 ;; The project management packages have some issues on detecting project root.
 ;; e.g. `projectile' doesn't handle symlink folders well, while `project' is unable
 ;; to hanle sub-projects.
 ;; You can specify one if you encounter the issue.
-(setq doom-modeline-project-detection 'project)
+(setq doom-modeline-project-detection 'auto)
 
 ;; Determines the style used by `doom-modeline-buffer-file-name'.
 ;;
@@ -288,6 +293,8 @@ Run `M-x customize-group RET doom-modeline RET` or set the variables.
 
 ;; Whether display the mu4e notifications. It requires `mu4e-alert' package.
 (setq doom-modeline-mu4e nil)
+;; also enable the start of mu4e-alert
+(mu4e-alert-enable-mode-line-display)
 
 ;; Whether display the gnus notifications.
 (setq doom-modeline-gnus t)
