@@ -561,7 +561,7 @@ project directory is important."
   "The major mode, including environment and text-scale info."
   (propertize
    (concat
-    (doom-modeline-spc)
+    doom-modeline-spc
     (propertize (concat 
                  (if doom-modeline-major-mode-show-edit-depth (format-mode-line "%[") "")
                  (format-mode-line
